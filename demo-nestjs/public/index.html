@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NestJS Demo — Quản lý Sản phẩm (Nhóm 5)</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <style>
+    body { background: #f5f7fb; font-family: system-ui, -apple-system, sans-serif; }
+    .nest-badge { background: #e0234e; color: #fff; }
+    .card { border: none; border-radius: 14px; box-shadow: 0 4px 16px rgba(15,23,42,0.06); }
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-dark bg-dark mb-4">
+    <div class="container">
+      <span class="navbar-brand fw-bold">
+        <span class="badge nest-badge me-2">NestJS</span> Demo REST API Quản lý Sản phẩm
+      </span>
+      <div class="d-flex gap-2">
+        <a href="/api" target="_blank" class="btn btn-outline-light btn-sm">Mở Swagger UI (/api)</a>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container pb-5">
+    <div class="alert alert-light border d-flex justify-content-between align-items-center mb-4">
+      <div>
+        <strong>Nhóm 5 — SW306DV01:</strong> Nguyễn Thái Bảo (Trưởng nhóm), Trần Thành Đạt, Đặng Quang Vinh
+      </div>
+      <span class="text-muted small">Backend: NestJS + ValidationPipe + Swagger</span>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-lg-4">
+        <div class="card p-4">
+          <h5 class="fw-bold mb-3" id="formTitle">Thêm sản phẩm mới</h5>
+          <div id="errorBox" class="alert alert-danger d-none small"></div>
+          <form id="productForm">
+            <input type="hidden" id="editId" />
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Tên sản phẩm</label>
+              <input type="text" id="name" class="form-control" placeholder="VD: Chuột Logitech G Pro" />
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-semibold">Danh mục</label>
+              <select id="category" class="form-select">
+                <option value="Laptop">Laptop</option>
+                <option value="Phụ kiện">Phụ kiện</option>
+                <option value="Màn hình">Màn hình</option>
+                <option value="Âm thanh">Âm thanh</option>
+              </select>
+            </div>
+            <div class="row g-2 mb-3">
+              <div class="col">
+                <label class="form-label small fw-semibold">Giá bán (VNĐ)</label>
+                <input type="number" id="price" class="form-control" value="1500000" />
+              </div>
+              <div class="col">
+                <label class="form-label small fw-semibold">Tồn kho</label>
+                <input type="number" id="stock" class="form-control" value="10" />
+              </div>
+            </div>
+            <div class="d-grid gap-2">
+              <button type="submit" class="btn btn-danger fw-semibold" id="submitBtn">Gửi POST /products</button>
+              <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="cancelEditBtn">Hủy chỉnh sửa</button>
+              <button type="button" class="btn btn-outline-warning btn-sm" id="testInvalidBtn">
+                Test ValidationPipe (Gửi dữ liệu sai)
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+        <div class="card p-4">
+          <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h5 class="fw-bold mb-0">Danh sách sản phẩm (<span id="count">0</span>)</h5>
+            <div class="d-flex gap-2">
+              <input type="text" id="searchInput" class="form-control form-control-sm" placeholder="Tìm kiếm..." style="width: 180px;" />
+              <select id="filterCategory" class="form-select form-select-sm" style="width: 140px;">
+                <option value="ALL">Tất cả</option>
+                <option value="Laptop">Laptop</option>
+                <option value="Phụ kiện">Phụ kiện</option>
+                <option value="Màn hình">Màn hình</option>
+                <option value="Âm thanh">Âm thanh</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light small">
+                <tr>
+                  <th>ID</th>
+                  <th>Sản phẩm</th>
+                  <th>Danh mục</th>
+                  <th>Giá bán</th>
+                  <th>Trạng thái</th>
+                  <th class="text-end">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody id="productTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card p-3 mt-3 bg-dark text-light">
+          <div class="small fw-semibold text-warning mb-1">API Log (Live Response từ NestJS)</div>
+          <pre id="apiLog" class="mb-0 small" style="max-height: 150px; overflow:auto;">Sẵn sàng gọi API...</pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const tbody = document.getElementById('productTableBody');
+    const apiLog = document.getElementById('apiLog');
+    const errorBox = document.getElementById('errorBox');
+    const form = document.getElementById('productForm');
+    const editIdInput = document.getElementById('editId');
+    const formTitle = document.getElementById('formTitle');
+    const submitBtn = document.getElementById('submitBtn');
+    const cancelEditBtn = document.getElementById('cancelEditBtn');
+
+    function logApi(method, url, status, data) {
+      apiLog.textContent = `${method} ${url} -> HTTP ${status}\n` + JSON.stringify(data, null, 2);
+    }
+
+    function showError(msg) {
+      errorBox.innerHTML = Array.isArray(msg) ? msg.map(m => `• ${m}`).join('<br/>') : msg;
+      errorBox.classList.remove('d-none');
+    }
+
+    function hideError() {
+      errorBox.classList.add('d-none');
+    }
+
+    async function loadProducts() {
+      const search = document.getElementById('searchInput').value.trim();
+      const category = document.getElementById('filterCategory').value;
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (category !== 'ALL') params.append('category', category);
+
+      const url = `/products${params.toString() ? '?' + params.toString() : ''}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      logApi('GET', url, res.status, data);
+
+      document.getElementById('count').textContent = data.length;
+      tbody.innerHTML = data.map(p => `
+        <tr>
+          <td class="text-muted">#${p.id}</td>
+          <td class="fw-semibold">${p.name}</td>
+          <td><span class="badge bg-light text-dark border">${p.category}</span></td>
+          <td>${Number(p.price).toLocaleString('vi-VN')} đ</td>
+          <td>
+            <span class="status-dot ${p.inStock ? 'bg-success' : 'bg-danger'}"></span>
+            <span class="small">${p.inStock ? `Còn hàng (${p.stock})` : 'Hết hàng'}</span>
+          </td>
+          <td class="text-end">
+            <button class="btn btn-sm btn-outline-primary me-1" onclick='startEdit(${JSON.stringify(p)})'>Sửa</button>
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteProduct(${p.id})">Xóa</button>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+      const id = editIdInput.value;
+      const payload = {
+        name: document.getElementById('name').value,
+        category: document.getElementById('category').value,
+        price: Number(document.getElementById('price').value),
+        stock: Number(document.getElementById('stock').value),
+      };
+
+      const method = id ? 'PATCH' : 'POST';
+      const url = id ? `/products/${id}` : '/products';
+      const res = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      logApi(method, url, res.status, data);
+
+      if (!res.ok) {
+        showError(data.message || 'Lỗi dữ liệu');
+        return;
+      }
+
+      resetForm();
+      loadProducts();
+    });
+
+    document.getElementById('testInvalidBtn').addEventListener('click', async () => {
+      hideError();
+      const badPayload = { name: '', category: 'Phụ kiện', price: -500, stock: -3 };
+      const res = await fetch('/products', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(badPayload),
+      });
+      const data = await res.json();
+      logApi('POST', '/products (INVALID PAYLOAD)', res.status, data);
+      showError(data.message);
+    });
+
+    window.startEdit = (p) => {
+      hideError();
+      editIdInput.value = p.id;
+      document.getElementById('name').value = p.name;
+      document.getElementById('category').value = p.category;
+      document.getElementById('price').value = p.price;
+      document.getElementById('stock').value = p.stock;
+      formTitle.textContent = `Cập nhật sản phẩm #${p.id}`;
+      submitBtn.textContent = `Gửi PATCH /products/${p.id}`;
+      cancelEditBtn.classList.remove('d-none');
+    };
+
+    function resetForm() {
+      editIdInput.value = '';
+      form.reset();
+      document.getElementById('price').value = 1500000;
+      document.getElementById('stock').value = 10;
+      formTitle.textContent = 'Thêm sản phẩm mới';
+      submitBtn.textContent = 'Gửi POST /products';
+      cancelEditBtn.classList.add('d-none');
+    }
+
+    cancelEditBtn.addEventListener('click', () => {
+      hideError();
+      resetForm();
+    });
+
+    window.deleteProduct = async (id) => {
+      const res = await fetch(`/products/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      logApi('DELETE', `/products/${id}`, res.status, data);
+      loadProducts();
+    };
+
+    document.getElementById('searchInput').addEventListener('input', loadProducts);
+    document.getElementById('filterCategory').addEventListener('change', loadProducts);
+
+    loadProducts();
+  </script>
+</body>
+</html>
